@@ -145,7 +145,13 @@ const toAlertLevel = (score: number): AlertLevel => {
   return AlertLevel.LOW;
 };
 
-const getSeatLabel = (index: number) => `S${index + 1}`;
+const getSeatLabel = (bbox?: [number, number, number, number]) => {
+  if (!bbox) return 'S1';
+
+  const centerX = bbox[0] + bbox[2] / 2;
+  const seatNumber = Math.max(1, Math.round(centerX / 120));
+  return `S${seatNumber}`;
+};
 
 export const aiService = {
   getBaseUrl: () => AI_SERVER_URL,
@@ -305,9 +311,9 @@ export const aiService = {
       const score = DETECTION_POINTS[type];
       alerts.push({
         type,
-        seat: getSeatLabel(index),
+        seat: getSeatLabel(item.bbox),
         level: toAlertLevel(score),
-        description: `${type.replace(/_/g, ' ')} detected by the backend analysis.`,
+        description: `${type.replace(/_/g, ' ')} detected.`,
         confidence: Math.max(0, Math.min(1, item.confidence ?? 0)),
         score,
       });
@@ -318,9 +324,10 @@ export const aiService = {
       if (!type) return;
 
       const score = DETECTION_POINTS[type];
+      const behaviorBox = result.head_poses?.[index]?.bbox;
       alerts.push({
         type,
-        seat: getSeatLabel(index),
+        seat: getSeatLabel(behaviorBox),
         level: toAlertLevel(score),
         description: `${behavior.type.replace(/_/g, ' ').toLowerCase()} detected.`,
         confidence: Math.max(0, Math.min(1, behavior.confidence ?? 0)),

@@ -226,7 +226,7 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
 
       const aiHealthy = await checkAIConnection();
       if (!aiHealthy) {
-        setStreamError(`AI Server not responding at ${aiService.getBaseUrl()}. Please check your connection and verify the Render service is running.`);
+        setStreamError(`AI backend not responding at ${aiService.getBaseUrl()}. Please check your connection and verify the service is running.`);
         return;
       }
 
@@ -247,6 +247,7 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
             });
           } catch {
             console.warn('Selected camera unavailable, falling back to the default browser camera.');
+            setStreamError('Selected camera unavailable. Falling back to the default browser camera.');
             mediaStream = await navigator.mediaDevices.getUserMedia({
               video: true,
               audio: false,
