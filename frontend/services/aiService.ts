@@ -2,11 +2,13 @@ import { AlertLevel, DetectionStats, ProctorAlert } from '@/types';
 
 const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '');
 
+const DEFAULT_AI_SERVER_URL = 'https://proctorclay-ai-server.onrender.com';
+
 const AI_SERVER_URL = (() => {
   const configured = import.meta.env.VITE_AI_SERVER_URL?.trim();
   if (configured) return normalizeBaseUrl(configured);
   if (import.meta.env.DEV) return 'http://localhost:5000';
-  return '';
+  return DEFAULT_AI_SERVER_URL;
 })();
 
 export interface CameraDevice {
