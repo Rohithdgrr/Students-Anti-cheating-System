@@ -137,21 +137,20 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
         if (!frame) return;
 
         const response = await aiService.analyzeFrame(frame);
-        const result = response;
         const annotatedFrame = response.annotated_frame || frame;
         setCurrentFrame(annotatedFrame);
 
-        const integrityScore = aiService.calculateIntegrityScore(result);
+        const integrityScore = aiService.calculateIntegrityScore(response);
         updateIntegrityScore(integrityScore);
 
-        const stats = aiService.getDetectionStats(result);
+        const stats = aiService.getDetectionStats(response);
         updateStats(stats);
 
-        if (result.head_poses) {
-          setHeadPoseCount(result.head_poses.length);
+        if (response.head_poses) {
+          setHeadPoseCount(response.head_poses.length);
         }
 
-        const alerts = aiService.convertDetectionsToAlerts(result);
+        const alerts = aiService.convertDetectionsToAlerts(response);
         const now = Date.now();
 
         alerts.forEach(alertData => {
@@ -240,10 +239,18 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
             throw new Error('Browser webcam is not supported in this environment');
           }
 
-          const mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: cameraDeviceId ? { deviceId: { exact: cameraDeviceId } } : true,
-            audio: false,
-          });
+          let mediaStream: MediaStream;
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: cameraDeviceId ? { deviceId: { exact: cameraDeviceId } } : true,
+              audio: false,
+            });
+          } catch {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+          }
 
           browserStreamRef.current = mediaStream;
           if (videoRef.current) {
