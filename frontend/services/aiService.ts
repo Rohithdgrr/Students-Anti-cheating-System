@@ -1,4 +1,4 @@
-import { AlertLevel, DetectionStats, ProctorAlert } from '../../types';
+import { AlertLevel, DetectionStats, ProctorAlert } from '@/types';
 
 const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '');
 
@@ -304,7 +304,7 @@ export const aiService = {
   convertDetectionsToAlerts: (result: AIDetection): Omit<ProctorAlert, 'id' | 'timestamp' | 'screenshot'>[] => {
     const alerts: Omit<ProctorAlert, 'id' | 'timestamp' | 'screenshot'>[] = [];
 
-    result.prohibited_items.forEach((item, index) => {
+    result.prohibited_items.forEach(item => {
       const type = mapDetectionType(item);
       if (!type) return;
 

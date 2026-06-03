@@ -35,6 +35,8 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ onConnect, sta
     refreshCameras();
   }, []);
 
+  const selectedCameraId = source === 'direct' ? selectedCamera || undefined : undefined;
+
   return (
     <ClayCard className="bg-white">
       <div className="flex items-center justify-between mb-4">
@@ -143,7 +145,7 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ onConnect, sta
         <ClayButton
           variant={status === 'connected' ? 'ghost' : 'primary'}
           className="w-full"
-          onClick={() => onConnect(source === 'ip' ? url : 'direct', source, source === 'direct' ? selectedCamera || undefined : undefined)}
+          onClick={() => onConnect(source === 'ip' ? url : 'direct', source, selectedCameraId)}
           disabled={status === 'connecting'}
         >
           {status === 'connected' ? 'Reconnect Camera' : source === 'direct' ? 'Start Webcam' : 'Connect IP Camera'}

@@ -115,8 +115,14 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
   const captureBrowserFrame = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    const isVideoReady =
+      !!video &&
+      !!canvas &&
+      video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      video.videoWidth > 0 &&
+      video.videoHeight > 0;
 
-    if (!video || !canvas || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0 || video.videoHeight === 0) {
+    if (!isVideoReady || !video || !canvas) {
       return null;
     }
 
@@ -245,9 +251,9 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
               video: cameraDeviceId ? { deviceId: { exact: cameraDeviceId } } : true,
               audio: false,
             });
-          } catch {
-            console.warn('Selected camera unavailable, falling back to the default browser camera.');
-            setStreamError('Selected camera unavailable. Falling back to the default browser camera.');
+          } catch (error: unknown) {
+            console.warn('Selected camera unavailable, falling back to the default browser camera.', error);
+            setStreamError('Unable to access the selected camera. Using the default browser camera instead.');
             mediaStream = await navigator.mediaDevices.getUserMedia({
               video: true,
               audio: false,
