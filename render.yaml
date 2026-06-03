@@ -19,4 +19,4 @@ services:
       - key: YOLO_VERBOSE
         value: "false"
       - key: CORS_ORIGIN
-        value: https://embedded-system-project.vercel.app/  # CHANGE THIS to your actual Vercel URL
+        value: https://embedded-system-project.vercel.app

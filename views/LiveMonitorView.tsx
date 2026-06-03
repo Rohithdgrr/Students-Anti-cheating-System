@@ -30,6 +30,7 @@ export const LiveMonitorView: React.FC<LiveMonitorViewProps> = ({
   const [connStatus, setConnStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [streamUrl, setStreamUrl] = useState('');
   const [cameraSource, setCameraSource] = useState<'direct' | 'ip'>('direct');
+  const [cameraDeviceId, setCameraDeviceId] = useState('');
   const [stats, setStats] = useState<IStats>({
     phone: 0,
     chit: 0,
@@ -44,9 +45,10 @@ export const LiveMonitorView: React.FC<LiveMonitorViewProps> = ({
   });
   const [notificationAlert, setNotificationAlert] = useState<ProctorAlert | null>(null);
 
-  const handleConnect = (url: string, source: 'direct' | 'ip') => {
+  const handleConnect = (url: string, source: 'direct' | 'ip', deviceId?: string) => {
     setStreamUrl(url);
     setCameraSource(source);
+    setCameraDeviceId(deviceId || '');
     setConnStatus('connecting');
     // Simulate connection delay
     setTimeout(() => setConnStatus('connected'), 1500);
@@ -99,6 +101,7 @@ export const LiveMonitorView: React.FC<LiveMonitorViewProps> = ({
             updateStats={updateStats}
             streamUrl={streamUrl}
             isExternalStream={cameraSource === 'ip'}
+            cameraDeviceId={cameraDeviceId}
           />
         </ClayCard>
 

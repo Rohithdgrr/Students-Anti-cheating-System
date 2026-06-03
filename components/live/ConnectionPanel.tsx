@@ -6,7 +6,7 @@ import { ClayButton } from '../ClayButton';
 import { aiService, CameraDevice } from '../../frontend/services/aiService';
 
 interface ConnectionPanelProps {
-  onConnect: (url: string, source: 'direct' | 'ip') => void;
+  onConnect: (url: string, source: 'direct' | 'ip', cameraDeviceId?: string) => void;
   status: 'connected' | 'disconnected' | 'connecting';
 }
 
@@ -14,7 +14,7 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ onConnect, sta
   const [url, setUrl] = useState('http://192.168.1.5:4747/video');
   const [source, setSource] = useState<'direct' | 'ip'>('direct');
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
-  const [selectedCamera, setSelectedCamera] = useState(0);
+  const [selectedCamera, setSelectedCamera] = useState('');
   const [loadingCameras, setLoadingCameras] = useState(false);
 
   const refreshCameras = async () => {
@@ -23,7 +23,7 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ onConnect, sta
       const cams = await aiService.listCameras();
       setCameras(cams);
       if (cams.length > 0) {
-        setSelectedCamera(cams[0].index);
+        setSelectedCamera(cams[0].deviceId);
       }
     } catch (e) {
       console.error('Failed to list cameras:', e);
@@ -34,6 +34,8 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ onConnect, sta
   useEffect(() => {
     refreshCameras();
   }, []);
+
+  const selectedCameraId = source === 'direct' ? selectedCamera || undefined : undefined;
 
   return (
     <ClayCard className="bg-white">
@@ -65,7 +67,7 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ onConnect, sta
               }`}
           >
             <Camera size={14} />
-            Laptop Camera
+            Browser Webcam
           </button>
           <button
             onClick={() => setSource('ip')}
@@ -97,8 +99,8 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ onConnect, sta
                 {cameras.map(cam => (
                   <button
                     key={cam.index}
-                    onClick={() => setSelectedCamera(cam.index)}
-                    className={`w-full flex items-center gap-3 p-2.5 rounded-xl text-left text-xs transition-all ${selectedCamera === cam.index
+                    onClick={() => setSelectedCamera(cam.deviceId)}
+                    className={`w-full flex items-center gap-3 p-2.5 rounded-xl text-left text-xs transition-all ${selectedCamera === cam.deviceId
                         ? 'bg-[#6C5CE7]/10 text-[#6C5CE7] border border-[#6C5CE7]/30'
                         : 'bg-[#F5F0EB]/50 text-[#636E72] hover:bg-[#F5F0EB] border border-transparent'
                       }`}
@@ -143,17 +145,17 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ onConnect, sta
         <ClayButton
           variant={status === 'connected' ? 'ghost' : 'primary'}
           className="w-full"
-          onClick={() => onConnect(source === 'ip' ? url : 'direct', source)}
+          onClick={() => onConnect(source === 'ip' ? url : 'direct', source, selectedCameraId)}
           disabled={status === 'connecting'}
         >
-          {status === 'connected' ? 'Reconnect Camera' : source === 'direct' ? 'Start Laptop Camera' : 'Connect IP Camera'}
+          {status === 'connected' ? 'Reconnect Camera' : source === 'direct' ? 'Start Webcam' : 'Connect IP Camera'}
         </ClayButton>
 
         <div className="bg-[#F5F0EB] p-3 rounded-xl flex gap-3 items-start">
           <Info size={16} className="text-[#6C5CE7] shrink-0 mt-0.5" />
           <p className="text-[11px] text-[#636E72] leading-relaxed">
             {source === 'direct' ? (
-              <><span className="font-bold text-[#2D3436]">Direct Mode:</span> Opens your laptop webcam via the AI server (OpenCV). All frames processed by YOLO + MediaPipe in real-time.</>
+              <><span className="font-bold text-[#2D3436]">Direct Mode:</span> Uses your browser webcam, sends frames to the Render backend, and returns live YOLO + MediaPipe detections.</>
             ) : (
               <><span className="font-bold text-[#2D3436]">IP Camera Mode:</span> Open DroidCam/IP Webcam app on your phone → Start server → Enter the URL shown in the app. Supports MJPEG streams.</>
             )}

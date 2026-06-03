@@ -12,6 +12,7 @@ interface LiveMonitoringProps {
   updateStats: (stats: Omit<DetectionStats, 'expectedCount'>) => void;
   streamUrl?: string;
   isExternalStream?: boolean;
+  cameraDeviceId?: string;
 }
 
 export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
@@ -19,9 +20,11 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
   updateIntegrityScore,
   updateStats,
   streamUrl,
-  isExternalStream
+  isExternalStream,
+  cameraDeviceId
 }) => {
   const imgRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -37,6 +40,7 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isRecording, setIsRecording] = useState(false);
   const pollTimerRef = useRef<number | null>(null);
+  const browserStreamRef = useRef<MediaStream | null>(null);
   
   // Track captured violations to prevent duplicate screenshots (type + seat combo)
   const capturedViolationsRef = useRef<Map<string, number>>(new Map());
@@ -89,10 +93,17 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
     }
+
+    if (browserStreamRef.current) {
+      browserStreamRef.current.getTracks().forEach(track => track.stop());
+      browserStreamRef.current = null;
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    }
+
     try {
-      if (useDirectCamera) {
-        await aiService.stopWebcam();
-      } else {
+      if (!useDirectCamera) {
         await aiService.stopStream();
       }
     } catch (e) {
@@ -101,11 +112,77 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
     setCurrentFrame(null);
   }, [useDirectCamera]);
 
+  const captureBrowserFrame = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const isVideoReady =
+      !!video &&
+      !!canvas &&
+      video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      video.videoWidth > 0 &&
+      video.videoHeight > 0;
+
+    if (!isVideoReady || !video || !canvas) {
+      return null;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.85).split(',')[1] ?? null;
+  }, []);
+
   const pollFrames = useCallback(async (isDirect: boolean) => {
     try {
-      const { frame, result } = isDirect
-        ? await aiService.getWebcamFrame()
-        : await aiService.getFrame();
+      if (isDirect) {
+        const frame = captureBrowserFrame();
+        if (!frame) return;
+
+        const response = await aiService.analyzeFrame(frame);
+        const annotatedFrame = response.annotated_frame || frame;
+        setCurrentFrame(annotatedFrame);
+
+        const integrityScore = aiService.calculateIntegrityScore(response);
+        updateIntegrityScore(integrityScore);
+
+        const stats = aiService.getDetectionStats(response);
+        updateStats(stats);
+
+        if (response.head_poses) {
+          setHeadPoseCount(response.head_poses.length);
+        }
+
+        const alerts = aiService.convertDetectionsToAlerts(response);
+        const now = Date.now();
+
+        alerts.forEach(alertData => {
+          const violationKey = `${alertData.type}-${alertData.seat}`;
+          const lastCaptured = capturedViolationsRef.current.get(violationKey);
+
+          let alertScreenshot = undefined;
+          if (!lastCaptured || (now - lastCaptured) > VIOLATION_COOLDOWN_MS) {
+            alertScreenshot = annotatedFrame;
+            capturedViolationsRef.current.set(violationKey, now);
+          }
+
+          onNewAlert({
+            ...alertData,
+            id: crypto.randomUUID(),
+            timestamp: new Date(),
+            screenshot: alertScreenshot
+          } as ProctorAlert);
+        });
+        return;
+      }
+
+      const response = await aiService.getFrame();
+      if (!response) return;
+
+      const { frame, result } = response;
 
       if (frame) {
         setCurrentFrame(frame);
@@ -124,17 +201,17 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
 
         const alerts = aiService.convertDetectionsToAlerts(result);
         const now = Date.now();
-        
+
         alerts.forEach(alertData => {
           const violationKey = `${alertData.type}-${alertData.seat}`;
           const lastCaptured = capturedViolationsRef.current.get(violationKey);
-          
+
           let alertScreenshot = undefined;
           if (!lastCaptured || (now - lastCaptured) > VIOLATION_COOLDOWN_MS) {
-            alertScreenshot = frame; // Use fresh frame from API
+            alertScreenshot = frame;
             capturedViolationsRef.current.set(violationKey, now);
           }
-          
+
           onNewAlert({
             ...alertData,
             id: crypto.randomUUID(),
@@ -146,7 +223,7 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
     } catch (err) {
       // Frame not yet available, this is normal during startup
     }
-  }, [onNewAlert, updateIntegrityScore, updateStats]);
+  }, [captureBrowserFrame, onNewAlert, updateIntegrityScore, updateStats]);
 
   const startMonitoring = async () => {
     try {
@@ -155,21 +232,42 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
 
       const aiHealthy = await checkAIConnection();
       if (!aiHealthy) {
-        setStreamError('AI Server not running. Start Python AI server on port 5000 first.');
+        setStreamError(`AI backend not responding at ${aiService.getBaseUrl()}. Please check your connection and verify the service is running.`);
         return;
       }
 
       if (!streamUrl || streamUrl === 'direct') {
-        // LAPTOP CAMERA MODE: Let the Python backend handle the webcam via OpenCV
+        // LAPTOP CAMERA MODE: Capture from the browser webcam and send frames to the backend
         setUseDirectCamera(true);
 
         try {
-          console.log('Starting webcam via AI server...');
-          await aiService.startWebcam(0);
-          console.log('Webcam started on AI server');
+          if (!navigator.mediaDevices?.getUserMedia) {
+            throw new Error('Browser webcam is not supported in this environment');
+          }
+
+          let mediaStream: MediaStream;
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: cameraDeviceId ? { deviceId: { exact: cameraDeviceId } } : true,
+              audio: false,
+            });
+          } catch (error: unknown) {
+            console.warn('Selected camera unavailable, falling back to the default browser camera.', error);
+            setStreamError('Unable to access the selected camera. Using the default browser camera instead.');
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+          }
+
+          browserStreamRef.current = mediaStream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = mediaStream;
+            await videoRef.current.play();
+          }
         } catch (e: any) {
-          console.error('Failed to start webcam:', e);
-          setStreamError(e?.message || 'Failed to start webcam on AI server');
+          console.error('Failed to start browser webcam:', e);
+          setStreamError(e?.message || 'Failed to start browser webcam');
           return;
         }
 
@@ -222,6 +320,9 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
     return () => {
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);
+      }
+      if (browserStreamRef.current) {
+        browserStreamRef.current.getTracks().forEach(track => track.stop());
       }
     };
   }, []);
@@ -368,6 +469,7 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
       </div>
 
       <canvas ref={canvasRef} className="hidden" />
+      <video ref={videoRef} className="hidden" playsInline muted autoPlay />
 
       {isMonitoring && (
         <ClayCard className="bg-[#6C5CE7]/5 border-[#6C5CE7]/20 flex items-start gap-4">
@@ -384,7 +486,7 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
                     <><span className="font-semibold">MediaPipe</span> tracking head pose (yaw/pitch/roll) for attention monitoring. </>
                   )}
                 </>
-                : "AI Server disconnected. Start Python server: cd ai_backend && python src/detector.py"}
+                : `AI Server disconnected. Check ${aiService.getBaseUrl()}`}
               <span className="font-bold ml-2">Last check: {new Date().toLocaleTimeString()}</span>
             </p>
           </div>
