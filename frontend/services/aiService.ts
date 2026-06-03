@@ -1,12 +1,13 @@
 import { AlertLevel, DetectionStats, ProctorAlert } from '../../types';
 
-const DEFAULT_AI_SERVER_URL = 'https://students-anti-cheating-system.onrender.com';
-
 const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '');
 
-const AI_SERVER_URL = normalizeBaseUrl(
-  import.meta.env.VITE_AI_SERVER_URL?.trim() || DEFAULT_AI_SERVER_URL
-);
+const AI_SERVER_URL = (() => {
+  const configured = import.meta.env.VITE_AI_SERVER_URL?.trim();
+  if (configured) return normalizeBaseUrl(configured);
+  if (import.meta.env.DEV) return 'http://localhost:5000';
+  return '';
+})();
 
 export interface CameraDevice {
   index: number;
@@ -81,6 +82,10 @@ const DETECTION_POINTS: Record<string, number> = {
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 
 const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  if (!AI_SERVER_URL) {
+    throw new Error('VITE_AI_SERVER_URL is not configured');
+  }
+
   const response = await fetch(`${AI_SERVER_URL}${path}`, {
     ...init,
     headers: {
@@ -140,7 +145,7 @@ const toAlertLevel = (score: number): AlertLevel => {
   return AlertLevel.LOW;
 };
 
-const getSeatLabel = (index: number, totalSeats: number) => `S${(index % Math.max(totalSeats, 1)) + 1}`;
+const getSeatLabel = (index: number) => `S${index + 1}`;
 
 export const aiService = {
   getBaseUrl: () => AI_SERVER_URL,
@@ -292,7 +297,6 @@ export const aiService = {
 
   convertDetectionsToAlerts: (result: AIDetection): Omit<ProctorAlert, 'id' | 'timestamp' | 'screenshot'>[] => {
     const alerts: Omit<ProctorAlert, 'id' | 'timestamp' | 'screenshot'>[] = [];
-    const seatCount = Math.max(result.person_count, 1);
 
     result.prohibited_items.forEach((item, index) => {
       const type = mapDetectionType(item);
@@ -301,7 +305,7 @@ export const aiService = {
       const score = DETECTION_POINTS[type];
       alerts.push({
         type,
-        seat: getSeatLabel(index, seatCount),
+        seat: getSeatLabel(index),
         level: toAlertLevel(score),
         description: `${type.replace(/_/g, ' ')} detected by the backend analysis.`,
         confidence: Math.max(0, Math.min(1, item.confidence ?? 0)),
@@ -316,7 +320,7 @@ export const aiService = {
       const score = DETECTION_POINTS[type];
       alerts.push({
         type,
-        seat: getSeatLabel(index, seatCount),
+        seat: getSeatLabel(index),
         level: toAlertLevel(score),
         description: `${behavior.type.replace(/_/g, ' ').toLowerCase()} detected.`,
         confidence: Math.max(0, Math.min(1, behavior.confidence ?? 0)),

@@ -116,7 +116,7 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    if (!video || !canvas || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+    if (!video || !canvas || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0 || video.videoHeight === 0) {
       return null;
     }
 
@@ -226,7 +226,7 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
 
       const aiHealthy = await checkAIConnection();
       if (!aiHealthy) {
-        setStreamError(`AI Server not responding at ${aiService.getBaseUrl()}`);
+        setStreamError(`AI Server not responding at ${aiService.getBaseUrl()}. Please check your connection and verify the Render service is running.`);
         return;
       }
 
@@ -246,6 +246,7 @@ export const LiveMonitoring: React.FC<LiveMonitoringProps> = ({
               audio: false,
             });
           } catch {
+            console.warn('Selected camera unavailable, falling back to the default browser camera.');
             mediaStream = await navigator.mediaDevices.getUserMedia({
               video: true,
               audio: false,

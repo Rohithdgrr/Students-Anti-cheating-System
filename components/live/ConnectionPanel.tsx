@@ -143,7 +143,7 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ onConnect, sta
         <ClayButton
           variant={status === 'connected' ? 'ghost' : 'primary'}
           className="w-full"
-          onClick={() => onConnect(source === 'ip' ? url : 'direct', source, source === 'direct' ? selectedCamera : undefined)}
+          onClick={() => onConnect(source === 'ip' ? url : 'direct', source, source === 'direct' ? selectedCamera || undefined : undefined)}
           disabled={status === 'connecting'}
         >
           {status === 'connected' ? 'Reconnect Camera' : source === 'direct' ? 'Start Webcam' : 'Connect IP Camera'}
