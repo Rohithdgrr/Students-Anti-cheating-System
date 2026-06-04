@@ -20,3 +20,4 @@ services:
         value: "false"
       - key: CORS_ORIGIN
         value: https://embedded-system-project.vercel.app
+    region: oregon
