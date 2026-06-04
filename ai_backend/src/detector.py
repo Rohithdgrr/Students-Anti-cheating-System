@@ -20,8 +20,10 @@ from ultralytics import YOLO
 from collections import defaultdict
 import threading
 
-# MediaPipe imports
+# MediaPipe imports (Tasks API for 0.10.30+)
 import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 
 # Project root (where yolov8n.pt lives)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -40,19 +42,22 @@ CORS(app, resources={
 
 
 class HeadPoseEstimator:
-    """Uses MediaPipe Face Mesh to estimate head pose (yaw, pitch, roll)."""
+    """Uses MediaPipe FaceLandmarker (Tasks API) to estimate head pose (yaw, pitch, roll)."""
+
+    _MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
 
     def __init__(self):
-        self.mp_face_mesh = mp.solutions.face_mesh
-        self.face_mesh = self.mp_face_mesh.FaceMesh(
-            static_image_mode=False,
-            max_num_faces=5,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
+        model_path = self._get_model()
+        base_options = python.BaseOptions(model_asset_path=model_path)
+        options = vision.FaceLandmarkerOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.IMAGE,
+            num_faces=5,
+            min_face_detection_confidence=0.5,
+            output_face_blendshapes=False,
+            output_facial_transformation_matrixes=False,
         )
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.mp_drawing_styles = mp.solutions.drawing_styles
+        self.landmarker = vision.FaceLandmarker.create_from_options(options)
 
         # 3D model points for head pose estimation (generic face model)
         self.model_points = np.array([
@@ -67,14 +72,29 @@ class HeadPoseEstimator:
         # Landmark indices for pose estimation
         self.pose_landmark_indices = [1, 152, 263, 33, 287, 57]
 
+    def _get_model(self):
+        model_dir = os.path.join(PROJECT_ROOT, 'models')
+        model_path = os.path.join(model_dir, 'face_landmarker.task')
+        if not os.path.exists(model_path):
+            os.makedirs(model_dir, exist_ok=True)
+            print(f"Downloading MediaPipe face landmark model...")
+            import requests as req
+            r = req.get(self._MODEL_URL, timeout=60)
+            r.raise_for_status()
+            with open(model_path, 'wb') as f:
+                f.write(r.content)
+            print(f"Model saved to {model_path}")
+        return model_path
+
     def estimate(self, frame):
         """Estimate head poses for all faces in the frame.
         Returns list of dicts with yaw, pitch, roll and face bounding box."""
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.face_mesh.process(rgb_frame)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        detection_result = self.landmarker.detect(mp_image)
 
         poses = []
-        if not results.multi_face_landmarks:
+        if not detection_result.face_landmarks:
             return poses
 
         h, w, _ = frame.shape
@@ -89,11 +109,11 @@ class HeadPoseEstimator:
         ], dtype=np.float64)
         dist_coeffs = np.zeros((4, 1), dtype=np.float64)
 
-        for face_landmarks in results.multi_face_landmarks:
+        for face_landmarks in detection_result.face_landmarks:
             # Extract 2D image points
             image_points = np.array([
-                (face_landmarks.landmark[idx].x * w,
-                 face_landmarks.landmark[idx].y * h)
+                (face_landmarks[idx].x * w,
+                 face_landmarks[idx].y * h)
                 for idx in self.pose_landmark_indices
             ], dtype=np.float64)
 
@@ -117,9 +137,9 @@ class HeadPoseEstimator:
             yaw = euler_angles[1][0]
             roll = euler_angles[2][0]
 
-            # Compute face bounding box from landmarks
-            x_coords = [face_landmarks.landmark[i].x * w for i in range(468)]
-            y_coords = [face_landmarks.landmark[i].y * h for i in range(468)]
+            # Compute face bounding box from all landmarks
+            x_coords = [lm.x * w for lm in face_landmarks]
+            y_coords = [lm.y * h for lm in face_landmarks]
             x_min, x_max = int(min(x_coords)), int(max(x_coords))
             y_min, y_max = int(min(y_coords)), int(max(y_coords))
 
