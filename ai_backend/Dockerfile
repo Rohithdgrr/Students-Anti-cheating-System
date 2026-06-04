@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
-EXPOSE 8080
+ENV PORT=8080
+EXPOSE $PORT
 
-CMD ["gunicorn", "--workers", "1", "--threads", "1", "--timeout", "180", "--bind", "0.0.0.0:8080", "src.detector:app"]
+CMD gunicorn --workers 1 --threads 1 --timeout 180 --bind 0.0.0.0:$PORT src.detector:app
