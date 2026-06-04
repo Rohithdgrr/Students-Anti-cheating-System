@@ -1,17 +1,10 @@
 services:
   - type: web
     name: proctorclay-ai-server
-    runtime: python
-    plan: starter  # Free tier available but may have cold starts. Use 'starter' ($7/mo) for better performance.
+    plan: starter
     rootDir: ai_backend
-    buildCommand: |
-      pip install --upgrade pip
-      pip install --no-cache-dir -r requirements.txt
-    startCommand: |
-      gunicorn --workers 1 --threads 1 --timeout 180 --bind 0.0.0.0:$PORT "src.detector:app"
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.7
       - key: FLASK_ENV
         value: production
       - key: PYTHONUNBUFFERED
